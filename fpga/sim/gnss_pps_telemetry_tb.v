@@ -25,7 +25,7 @@ module gnss_pps_telemetry_tb;
     .rb_addr(rb_addr), .rb_data(rb_data),
     .pps_gps(pps_gps), .pps_ext(pps_ext), .io_a(io_a), .io_b(io_b),
     .uart_rx_sel(uart_rx_sel), .gps_tx_en(gps_tx_en), .clkdiv_override(clkdiv_override),
-    .bridge_tx(), .uhd_uart_en(uhd_uart_en), .autocfg_status(4'b0110), .osc_sel_ext(), .droop_dis(), .osc_snap(64'h0001_2345_6789_ABCD), .osc_last(32'd100000001), .tx_byte(), .tx_byte_valid(), .rx_byte(8'h00), .rx_byte_valid(1'b0));
+    .bridge_tx(), .uhd_uart_en(uhd_uart_en), .autocfg_status(4'b0110), .osc_sel_ext(), .droop_dis(), .wb_profile(), .osc_snap(64'h0001_2345_6789_ABCD), .osc_last(32'd100000001), .tx_byte(), .tx_byte_valid(), .rx_byte(8'h00), .rx_byte_valid(1'b0));
 
   integer errors = 0;
   task check(input [255:0] what, input [63:0] got, input [63:0] exp);
@@ -67,7 +67,7 @@ module gnss_pps_telemetry_tb;
 
     // Defaults
     peek(0, r); check("magic", r[63:32], 32'h4B374F50);
-    check("version", r[31:0], 32'h00010007);
+    check("version", r[31:0], 32'h00010008);
     check("clkdiv default (38400 @100MHz)", clkdiv_override, 2604);
     check("rx_sel default", uart_rx_sel, 0);
     check("uhd_uart_en default", uhd_uart_en, 0);

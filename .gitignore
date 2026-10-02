@@ -25,3 +25,6 @@ tools/gnss_status
 B210_Project_Firmwire.gen/
 clockInfo.txt
 tools/adc_status
+
+# Python
+__pycache__/

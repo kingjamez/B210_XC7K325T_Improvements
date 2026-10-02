@@ -27,6 +27,7 @@ module ddc_chain
    output [31:0] sample,
    input 	     run,
    input 	     droop_en,   // CIC droop compensation (new_hb path)
+   input [1:0]       wb_profile, // wideband filter profile at decimation 1 (0 = off)
    output 	     strobe,
    output [31:0]     debug
    );
@@ -256,6 +257,21 @@ module ddc_chain
 	    .strobe_in(strobe_unscaled), .i_in(i_unscaled), .q_in(q_unscaled),
 	    .strobe_out(strobe_comp), .i_out(i_comp), .q_out(q_comp));
 
+	 // Wideband filter profiles at decimation 1 (33-tap FIR; bypass with no
+	 // delay for profile 0 or any other decimation). See wb_fir.v. Builds
+	 // that need the 68 DSP48s can define K7_NO_WB_FIR.
+	 wire [WIDTH-1:0] i_wb, q_wb;
+	 wire             strobe_wb;
+`ifdef K7_NO_WB_FIR
+	 assign {strobe_wb, i_wb, q_wb} = {strobe_comp, i_comp, q_comp};
+`else
+	 wb_fir #(.WIDTH(WIDTH)) wb_fir
+	   (.clk(clk), .rst(rst), .profile(wb_profile),
+	    .active((cic_decim_rate <= 8'd1) & ~enable_hb1 & ~enable_hb2),
+	    .strobe_in(strobe_comp), .i_in(i_comp), .q_in(q_comp),
+	    .strobe_out(strobe_wb), .i_out(i_wb), .q_out(q_wb));
+`endif
+
 	 // round to 19 bits for clip (->18) followed by multiplication (total gain of 6 bits)
 	 wire [18:0]  i_unscaled_rnd, q_unscaled_rnd;
 
@@ -263,14 +279,14 @@ module ddc_chain
 	   .bits_in(WIDTH),
 	   .bits_out(19)
 	 ) unscaled_rnd_i (
-	   .in(i_comp),
+	   .in(i_wb),
 	   .out(i_unscaled_rnd)
 	 );
 	 round #(
 	   .bits_in(WIDTH),
 	   .bits_out(19)
 	 ) unscaled_rnd_q (
-	   .in(q_comp),
+	   .in(q_wb),
 	   .out(q_unscaled_rnd)
 	 );
 
@@ -282,9 +298,9 @@ module ddc_chain
 	 wire [17:0] i_unscaled_clip, q_unscaled_clip;
 
 	 clip_reg #(.bits_in(19), .bits_out(18), .STROBED(1)) unscaled_clip_i
-	   (.clk(clk), .in(i_unscaled_rnd), .strobe_in(strobe_comp), .out(i_unscaled_clip[17:0]), .strobe_out(strobe_unscaled_clip));
+	   (.clk(clk), .in(i_unscaled_rnd), .strobe_in(strobe_wb), .out(i_unscaled_clip[17:0]), .strobe_out(strobe_unscaled_clip));
 	 clip_reg #(.bits_in(19), .bits_out(18), .STROBED(1)) unscaled_clip_q
-	   (.clk(clk), .in(q_unscaled_rnd), .strobe_in(strobe_comp), .out(q_unscaled_clip[17:0]), .strobe_out());
+	   (.clk(clk), .in(q_unscaled_rnd), .strobe_in(strobe_wb), .out(q_unscaled_clip[17:0]), .strobe_out());
 
 	 // Apply scaling gain to compensate for CORDIC and CIC gain adjustments so that signal swing over network transport has
 	 // optimal dynamic range.

@@ -7,32 +7,36 @@ interface against the FX3 datasheet. Verify the download against
 
 | | |
 |---|---|
-| GNSS/PPS telemetry | v1.7 (`docs/registers.md`) |
+| GNSS/PPS telemetry | v1.8 (`docs/registers.md`) |
 | ADC monitor | v1.0 |
 | UHD compat | 16.0 (stock UHD sees a B210) |
-| Utilization | 31.6k LUTs (15.5%), 89 BRAM tiles (20%), 136 DSP (16%) |
+| Utilization | 32.2k LUTs (15.8%), 89.5 BRAM tiles (20%), 232 DSP (28%) |
 
 ## Changes in this release
 
-- **USB interface timing fixed.** The FX3 ↔ FPGA interface was never
-  timing-constrained in the vendor port, so whether UHD could open the board
-  reliably depended on how each build happened to be placed. Its registers are
-  now in the I/O cells, the interface clock phase is centred, and the build is
-  checked against the FX3 datasheet (`docs/technical-notes.md`). The previous
-  image worked on the test board, but with no margin; please update.
-- **CIC droop compensation.** The receive passband is now flat to 0.4 × the
-  sample rate at every decimation (it used to roll off by up to 9.7 dB at odd
-  decimations). On by default; telemetry CTRL bit 5 turns it off.
-- **Transmit data path tested** on hardware: TX and full-duplex streaming up
-  to 61.44 MS/s with no lost or corrupted packets (RF output not yet
-  characterized).
-- New tools: `tools/gpif_stress.py` (USB interface check, optional TX) and
-  `tools/droop_test.py` (passband measurement).
+- **Transmit: no more wrap-around at full scale.** The TX frequency shifter
+  (CORDIC) wrapped to the opposite sign when I and Q were both near full scale
+  (full-scale QPSK/QAM with any digital tuning offset): the carrier collapsed
+  by up to 17 dB with products up to +16 dBc. It now saturates; measured over
+  the air the carrier holds and products stay at −19 to −22 dBc even when
+  driven past full scale.
+- **Wideband filter profiles** at decimation 1 (56–61.44 MS/s, where the
+  AD9361 leaves the band edges open): three 33-tap profiles with 45–61 dB stop
+  bands, selected with telemetry CTRL[7:6]. Off by default (no change unless
+  you turn one on).
+- **Transmit measured over the air** at low power: LO leakage −37 dBc, image
+  −47 dBc, third-order products below −49 dBc, linear gain.
+- New tools: `tools/tx_test.py` (transmit checks, transmits) and
+  `tools/wb_test.py` (wideband profiles).
 
-Tested on hardware (one board, Linux, UHD 4.9): 20/20 UHD opens, GPS
-detection and telemetry, oscillator monitor, ADC monitor, RX streaming up to
-61.44 MS/s and 2 × 30.72 MS/s with zero drops, TX / full duplex as above,
-passband before/after. See the limitations in the top-level `README.md`.
+Previous release: USB interface timing fix, CIC droop compensation, TX
+streaming tested.
+
+Tested on hardware (one board, Linux, UHD 4.9): 20/20 UHD opens, GPS detection
+and telemetry, RX streaming up to 61.44 MS/s and 2 × 30.72 MS/s with zero
+drops, TX / full duplex with no lost packets, droop compensation within
+0.11 dB of its design, wideband profiles, transmit tests above. See the
+limitations in the top-level `README.md`.
 
 Load it with `--args "type=b200,fpga=/path/to/b210_k7.bin"` or a `uhd.conf`
 entry (`docs/user-guide.md`). Nothing is written to the board.

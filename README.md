@@ -6,7 +6,9 @@ and run the Ettus B200 FPGA design ported from Spartan-6, which leaves most of
 the much larger FPGA unused. This image keeps full compatibility with **stock
 UHD** and adds a working GPS, PPS fixes, monitoring, and a cleaner, more
 robust FPGA design: a USB interface that is timing-constrained to the
-FX3 datasheet instead of working by luck, and a flat receive passband.
+FX3 datasheet instead of working by luck, a flat receive passband, optional
+wideband filter profiles, and a transmit chain that no longer wraps at full
+scale.
 
 Free and open: FPGA code is LGPL-3.0-or-later (Ettus headers intact), host
 tools are GPL-3.0.
@@ -30,6 +32,8 @@ cannot brick a board; unplugging it or loading another image undoes it.
 | FPGA resources | ~56k LUTs, of which ~28k used as RAM by simulation-model FIFOs | ~31k LUTs; proper block-RAM clock-domain-crossing FIFOs with Vivado-checked constraints; much more timing margin |
 | DDC halfband outputs | Truncate and can wrap on overflow | Rounded and saturating |
 | RX passband (CIC droop) | Rolls off by up to 9.7 dB at 0.4 × the sample rate (odd decimations), 2.3 dB (even) | **Compensated** automatically at every decimation (13-tap FIR, design flatness 0.03 dB); can be turned off |
+| Wideband band edges (decimation 1, 56–61.44 MS/s) | Unfiltered: the AD9361 leaves the outer ~15% of the band open to whatever folds in from beyond Nyquist | Optional 33-tap filter profiles, 45–61 dB stop band (off by default) |
+| TX frequency shifter (CORDIC) at full scale | **Wraps around** when I and Q are both near full scale (e.g. full-scale QPSK): carrier collapses, products up to +16 dBc | Saturates: carrier holds, products ≤ −19 dBc even when driven past full scale |
 | USB interface (FX3 ↔ FPGA) timing | **Not constrained**: each build works or fails at random depending on placement; data sampled mid-transition | Registers in the I/O cells, clock phase centred, constrained to the FX3 datasheet: every build meets worst case or the build stops |
 
 Everything works with stock UHD (no UHD fork, no patched drivers) and stock
@@ -48,6 +52,13 @@ Linux (UHD 4.9), one board, with the on-board GPS antenna connected:
 - **TX streaming**: 0 sequence errors, underflows or overflows in 10 s TX and
   full-duplex runs at 15.36, 30.72 and 61.44 MS/s (1 channel) and 2 × 15.36 /
   2 × 30.72 MS/s (`tools/gpif_stress.py`, zero-valued samples at minimum gain).
+- **Transmit, over the air** (channel 0 TX to channel 1 RX, 915 MHz ISM band,
+  low power): LO leakage −37 dBc and image −47 dBc for a −6 dBFS tone,
+  third-order products below −49 dBc, TX gain steps exactly 10 dB per 10 dB.
+  Full-scale I = Q through the CORDIC: carrier holds (it collapsed by 17 dB
+  with the stock design), products −19 to −22 dBc instead of +6 to +16 dBc.
+- **Wideband profiles** (decimation 1): 43–53 dB measured stop band (limited by
+  the measurement), passband within 0.1–0.2 dB of the design.
 - **USB reliability**: 20 of 20 UHD opens in a row, each running UHD's full
   initialization (USB interface and codec reset, register self-tests).
 - **Passband**: at decimation 15 the passband ripple drops from 9.7 dB to
@@ -75,11 +86,13 @@ Details: `docs/technical-notes.md`.
   likely identical, but only one has been tested. If a board's GPS is wired
   differently, the GPS auto-configuration does nothing and the board behaves
   like it has no GPS; it never drives a GPS pin it hasn't verified is safe.
-- **Transmit: the data path is tested, RF quality is not.** TX and
-  full-duplex streaming run without lost or corrupted packets up to
-  61.44 MS/s, but only zero-valued samples at minimum gain were sent. Output
-  power, spectrum and EVM have not been measured, and the TX DSP is the stock
-  design (no rounding improvements yet).
+- **Transmit: tested relative, not calibrated.** Streaming, spectral purity
+  and gain linearity were measured over the air at low power (see above);
+  absolute output power and EVM have not been measured.
+- **Full duplex: keep the TX and RX LOs several MHz apart (or equal).** With
+  the two LOs within ~2 MHz of each other the AD9361's synthesizers interact
+  and the receiver shows strong spurs that are not on the air. This is the
+  chip, not the FPGA image.
 - **The oscillator is not GPS-disciplined.** `clock_source=gpsdo` gives GPS
   *time* but the 40 MHz oscillator free-runs (about −0.7 ppm on the test
   board: ~700 Hz error at 1 GHz). For frequency accuracy, feed a GPSDO's
@@ -145,7 +158,7 @@ Full instructions: `docs/user-guide.md`. Register map: `docs/registers.md`.
 | `fpga/scripts/` | Non-project Vivado build (`build.tcl`, `sources.tcl`) |
 | `fpga/sim/` | Icarus Verilog testbenches, full-design elaboration check, Vivado xsim test of the FIFOs |
 | `sw/dsp_models/` | Python reference models used for bit-exact tests |
-| `tools/` | `gnss_status`, `pps_probe`, `adc_status`, `baseline.sh`, `gpif_stress.py`, `droop_test.py` (stock UHD) |
+| `tools/` | `gnss_status`, `pps_probe`, `adc_status`, `baseline.sh`, `gpif_stress.py`, `droop_test.py`, `wb_test.py`, `tx_test.py` (stock UHD) |
 | `docs/` | User guide, register map, build instructions, technical notes |
 | `release/` | Prebuilt image, checksum and release notes |
 

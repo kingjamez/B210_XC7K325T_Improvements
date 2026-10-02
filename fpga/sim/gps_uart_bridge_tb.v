@@ -24,7 +24,7 @@ module gps_uart_bridge_tb;
     .rb_addr(rb_addr), .rb_data(rb_data),
     .pps_gps(1'b0), .pps_ext(1'b0), .io_a(1'b1), .io_b(txd),
     .uart_rx_sel(), .gps_tx_en(), .clkdiv_override(clkdiv), .bridge_tx(),
-    .uhd_uart_en(), .autocfg_status(4'b0000), .osc_sel_ext(), .droop_dis(), .osc_snap(64'h0), .osc_last(32'h0),
+    .uhd_uart_en(), .autocfg_status(4'b0000), .osc_sel_ext(), .droop_dis(), .wb_profile(), .osc_snap(64'h0), .osc_last(32'h0),
     .tx_byte(tx_byte), .tx_byte_valid(tx_valid),
     .rx_byte(rx_byte), .rx_byte_valid(rx_valid));
 
@@ -61,7 +61,7 @@ module gps_uart_bridge_tb;
     repeat (10) @(posedge radio_clk);
 
     peek(0, r);
-    if (r[31:0] !== 32'h00010007) begin $display("FAIL version %h", r[31:0]); errors = errors + 1; end
+    if (r[31:0] !== 32'h00010008) begin $display("FAIL version %h", r[31:0]); errors = errors + 1; end
 
     // Send the 8 bytes three times (24 bytes) to exercise ordering and the ring.
     for (n = 0; n < 3; n = n + 1)

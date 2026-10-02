@@ -90,7 +90,7 @@ Options:
 ## 5. Tools
 
 Build: `make -C tools` (needs libuhd headers). All are receive-only except
-`gpif_stress.py --tx`.
+`gpif_stress.py --tx` and `tx_test.py`.
 
 ### `tools/gnss_status`
 
@@ -170,6 +170,39 @@ tools/droop_test.py [--fpga PATH] [--channel 1] [--decims 15,127,6,254,12,1]
 Prints, per decimation, the expected droop, how closely the measured on/off
 ratio matches the design model, and the passband ripple off and on.
 
+### `tools/wb_test.py`
+
+Measures the wideband filter profiles at decimation 1 against their design,
+receive only, on a channel without an antenna (default channel 0):
+
+```bash
+tools/wb_test.py [--fpga PATH] [--channel 0] [--rates 61.44e6,56e6,30.72e6]
+```
+
+### `tools/tx_test.py`
+
+**Transmits.** Over-the-air checks with an antenna on channel 0's TX/RX port
+and one on channel 1's RX2 port (or a cable with ≥ 30 dB attenuation): tone
+purity (LO leakage, image, third-order products), TX gain linearity,
+full-scale noise, and the CORDIC at full scale. Default 915 MHz, TX gain
+capped at 50 dB, short bursts; use only where that is legal.
+
+```bash
+tools/tx_test.py [--fpga PATH] [--freq 915e6] [--gain 50] [--rx-gain 30] [--tests 1,2,3,4]
+```
+
+### Wideband filter profiles (decimation 1)
+
+Off by default. Telemetry CTRL[7:6] selects a profile for both channels when
+the decimation is 1 (sample rate = master clock rate): 1 = flat to 0.42 fs,
+≥ 50 dB from 0.49 fs; 2 = 0.40 / 0.47 fs, ≥ 45 dB; 3 = 0.36 / 0.44 fs,
+≥ 61 dB. A profile adds 16 samples of delay.
+
+```python
+ctrl = regs.peek64(6 * 8) & 0xFFFFFFFF
+regs.poke32(0, (ctrl & ~0xC0) | (1 << 6))   # profile 1; (ctrl & ~0xC0) = off
+```
+
 ### Turning droop compensation off
 
 It is on by default. Telemetry CTRL bit 5 turns it off for both channels
@@ -199,4 +232,5 @@ time.
 | `set_clock_source("gpsdo")` throws | That session did not detect the GPS; open again |
 | Dropped samples at high rates | Add `num_recv_frames=128,recv_frame_size=16360` |
 | PPS shows invalid | No GPS fix yet, antenna disconnected, or nothing on the SMA |
+| Strong spurs while transmitting and receiving at once | TX and RX LOs within ~2 MHz of each other (AD9361 synthesizer interaction): move them several MHz apart or make them equal |
 | UHD fails to open: "packet parse error" or an ack timeout while initializing the codec | With this image's USB interface constraints this should not happen; with an image you built yourself, check that the build finished with timing met (it stops otherwise), then run `tools/gpif_stress.py` |

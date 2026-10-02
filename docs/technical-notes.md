@@ -196,6 +196,61 @@ measurement's repeatability. What remains of the ripple is the analog front
 end and, at very low rates, the receiver's noise floor, which isn't flat near
 DC.
 
+## Wideband filter profiles at decimation 1 (`wb_fir.v`)
+
+At decimation 1 the FPGA passes the AD9361's samples straight through. Measured
+on a channel without antenna, the noise floor at 0.49–0.5 fs is only 0.6 dB
+(61.44 MS/s) to 1.8 dB (56 MS/s) below mid-band: the AD9361's filters leave
+the band edges open, so whatever folds in from beyond Nyquist lands in the
+outer ~15% of the band. `wb_fir.v` is a 33-tap symmetric FIR, one sample per
+clock, active only at decimation 1, with profiles selected by telemetry
+CTRL[7:6]:
+
+| Profile | Passband (ripple) | Stop band |
+|---|---|---|
+| 0 (default) | bypass, no added delay | – |
+| 1 | 0.42 fs (0.16 dB p-p) | ≥ 50 dB from 0.49 fs |
+| 2 | 0.40 fs (0.19 dB p-p) | ≥ 45 dB from 0.47 fs |
+| 3 | 0.36 fs (0.12 dB p-p) | ≥ 61 dB from 0.44 fs |
+
+Coefficients from `sw/dsp_models/wb_fir.py` (remez, 18-bit, DC gain exactly
+1); bit-exact against the model (`fpga/sim/wb_fir_tb.v`). A profile adds a
+delay of 16 samples; it cannot remove aliases that already fold into the
+passband. Measured with `tools/wb_test.py` (profile vs bypass on a channel
+without antenna): 43–53 dB stop band at 30.72–61.44 MS/s (limited by the
+measurement), passband within 0.1–0.2 dB of the design. Builds that need the
+96 DSP slices can define `K7_NO_WB_FIR`.
+
+## Transmit: CORDIC saturation (`cordic_z24.v`, `duc_chain.v`)
+
+The DUC shifts frequency with a CORDIC whenever UHD tunes part of the offset
+digitally. It keeps two guard bits internally, but its output dropped the top
+one without saturating, so a rotated I/Q pair above full scale wrapped to the
+opposite sign. That happens when I and Q are both above about 0.86 of full
+scale, as with full-scale QPSK or QAM. (Ettus's own comment in `duc_chain.v`
+notes the missing headroom.) Measured over the air with a constant A(1+1j)
+shifted 1 MHz by the CORDIC (`tools/tx_test.py`):
+
+| A | Carrier, stock → this image | Worst product, stock → this image |
+|---|---|---|
+| 0.8 | 56.3 → 56.8 dB | −29 → −29 dBc |
+| 0.9 | 46.9 → 57.2 dB | +5.7 → −21.9 dBc |
+| 1.0 | 39.1 → 57.5 dB | +15.8 → −18.6 dBc |
+
+`cordic_z24` now has a `saturate` parameter, used by the DUC only (the DDC's
+input has headroom and is unchanged); `fpga/sim/cordic_sat_tb.v` shows it is
+bit-identical below full scale and saturates instead of wrapping above. The
+remaining products near A = 1 are ordinary clipping. The transmit halfbands
+already rounded and saturated; nothing else in the chain wraps.
+
+Other transmit measurements (same setup, −6 dBFS tone, TX gain 50 dB): LO
+leakage −37 dBc, image −47 dBc, ±3rd-order products below −49 dBc (the
+measurement floor), gain steps 10.0 dB per 10 dB. Full-duplex note: with the
+TX and RX LOs within ~2 MHz of each other the receiver shows strong products
+at carrier + k × (LO spacing); they move with the RX tuning, don't change
+with RX gain and vanish with the LOs a few MHz apart (AD9361 synthesizer
+interaction).
+
 ## ADC overload monitor (`adc_monitor.v`)
 
 Peak |I|/|Q|, over-threshold count and sticky flag per AD9361 data slot,

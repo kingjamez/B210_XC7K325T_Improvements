@@ -2,9 +2,9 @@
 LIB := ../lib
 TOP := ../top/b200
 
-.PHONY: all gnss_pps_telemetry gps_uart_bridge gps_autoconfig adf4001_guard adc_monitor osc_monitor rnd_clip_slice droop_comp clean
+.PHONY: all gnss_pps_telemetry gps_uart_bridge gps_autoconfig adf4001_guard adc_monitor osc_monitor rnd_clip_slice droop_comp wb_fir cordic_sat clean
 
-all: gnss_pps_telemetry gps_uart_bridge gps_autoconfig adf4001_guard adc_monitor osc_monitor rnd_clip_slice droop_comp
+all: gnss_pps_telemetry gps_uart_bridge gps_autoconfig adf4001_guard adc_monitor osc_monitor rnd_clip_slice droop_comp wb_fir cordic_sat
 
 gnss_pps_telemetry:
 	iverilog -g2012 -Wall -o build/$@.vvp $@_tb.v $(TOP)/gnss_pps_telemetry.v \
@@ -54,6 +54,17 @@ rnd_clip_slice:
 droop_comp:
 	python3 ../../sw/dsp_models/droop_comp.py vectors build/droop_comp_vectors.txt
 	iverilog -g2012 -I $(LIB)/dsp -o build/$@.vvp $@_tb.v $(LIB)/dsp/droop_comp.v $(LIB)/dsp/rnd_clip_slice.v $(LIB)/dsp/clip.v
+	vvp -n build/$@.vvp | tee build/$@.log
+	@grep -q '^PASS' build/$@.log
+
+wb_fir:
+	python3 ../../sw/dsp_models/wb_fir.py vectors build/wb_fir_vectors.txt
+	iverilog -g2012 -I $(LIB)/dsp -o build/$@.vvp $@_tb.v $(LIB)/dsp/wb_fir.v $(LIB)/dsp/rnd_clip_slice.v $(LIB)/dsp/clip.v
+	vvp -n build/$@.vvp | tee build/$@.log
+	@grep -q '^PASS' build/$@.log
+
+cordic_sat:
+	iverilog -g2012 -o build/$@.vvp $@_tb.v $(LIB)/dsp/cordic_z24.v $(LIB)/dsp/cordic_stage.v
 	vvp -n build/$@.vvp | tee build/$@.log
 	@grep -q '^PASS' build/$@.log
 

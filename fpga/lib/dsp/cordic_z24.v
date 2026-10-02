@@ -12,6 +12,10 @@
 module cordic_z24(clock, reset, enable, xi, yi, zi, xo, yo, zo );
    parameter bitwidth = 16;
    parameter stages = 19;
+   // 1: saturate xo/yo at full scale instead of wrapping when the result needs
+   // the top guard bit (|output| > full scale: rotating a large input with both
+   // I and Q near full scale). 0: original behaviour (wraps).
+   parameter saturate = 0;
    localparam zwidth = 24;
    
    input clock;
@@ -106,8 +110,10 @@ module cordic_z24(clock, reset, enable, xi, yi, zi, xo, yo, zo );
    cordic_stage #(bitwidth+2,zwidth-1,18) cordic_stage18 (clock,reset,enable,x18,y18,z18,c18,x19,y19,z19);
    cordic_stage #(bitwidth+2,zwidth-1,19) cordic_stage19 (clock,reset,enable,x19,y19,z19,c19,x20,y20,z20);
 
-   assign xo = x20[bitwidth:1];  
-   assign yo = y20[bitwidth:1];
+   wire x_ovf = (saturate != 0) && (x20[bitwidth+1] != x20[bitwidth]);
+   wire y_ovf = (saturate != 0) && (y20[bitwidth+1] != y20[bitwidth]);
+   assign xo = x_ovf ? {x20[bitwidth+1], {(bitwidth-1){~x20[bitwidth+1]}}} : x20[bitwidth:1];
+   assign yo = y_ovf ? {y20[bitwidth+1], {(bitwidth-1){~y20[bitwidth+1]}}} : y20[bitwidth:1];
    assign zo = z20;		  
 
 endmodule // cordic

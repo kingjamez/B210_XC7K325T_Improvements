@@ -194,7 +194,9 @@ module duc_chain
    // The CORDIC has algorithmic gain of 1.647, implementation gain of 0.5 and potential gain associated with rotation of 1.414.
    // Thus the CORDIC will overflow when rotating and an input CW with (clipped) effective amplitude of 1.22 is applied.
    //
-   cordic_z24 #(.bitwidth(cwidth))
+   // saturate: a full-scale input with I and Q both large exceeds full scale
+   // after rotation (gain up to 1.647 x 0.5 x 1.414) and used to wrap.
+   cordic_z24 #(.bitwidth(cwidth), .saturate(1))
      cordic(.clock(clk), .reset(rst), .enable(run),
 	    .xi({i_interp,{(cwidth-18){1'b0}}}),.yi({q_interp,{(cwidth-18){1'b0}}}),
 	    .zi(phase[31:32-zwidth]),

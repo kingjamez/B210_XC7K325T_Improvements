@@ -38,6 +38,9 @@
 //                                     1 = SMA PPS
 //             [5]     droop_dis       1 = CIC droop compensation off in both RX
 //                                     DDCs (default 0 = on; see droop_comp.v)
+//             [7:6]   wb_profile      wideband filter profile at decimation 1,
+//                                     both RX DDCs: 0 = off (default), 1..3 (see
+//                                     wb_fir.v). v1.8+
 //             [31:16] clkdiv_override bus_clk cycles per UART bit, 0 = use UHD's
 //                                     value (115200), or 38400 once gps_autoconfig
 //                                     is ACKed. Default 2604 = 38400 baud at
@@ -107,6 +110,7 @@ module gnss_pps_telemetry #(
   input       [3:0] autocfg_status,   // gps_autoconfig, bus_clk domain, sticky
   output            osc_sel_ext,      // osc_monitor reference select
   output            droop_dis,        // CIC droop compensation off
+  output      [1:0] wb_profile,       // wideband filter profile (decimation 1)
   input      [63:0] osc_snap,         // osc_monitor, already in clk domain
   input      [31:0] osc_last,
 
@@ -118,7 +122,7 @@ module gnss_pps_telemetry #(
 );
 
   localparam [15:0] VERSION_MAJOR = 16'd1;
-  localparam [15:0] VERSION_MINOR = 16'd7;
+  localparam [15:0] VERSION_MINOR = 16'd8;
 
   //--------------------------------------------------------------------------
   // Settings
@@ -141,6 +145,7 @@ module gnss_pps_telemetry #(
   assign uhd_uart_en     = ctrl[3];
   assign osc_sel_ext     = ctrl[4];
   assign droop_dis       = ctrl[5];
+  assign wb_profile      = ctrl[7:6];
 
   //--------------------------------------------------------------------------
   // Host UART bridge: TX byte pushes, RX ring buffer

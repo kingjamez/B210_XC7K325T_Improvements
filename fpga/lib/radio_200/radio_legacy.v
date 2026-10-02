@@ -38,6 +38,7 @@ module radio_legacy
    output [7:0] user_rb_addr, input [63:0] user_rb_data,
 
    input ddc_droop_en,           // CIC droop compensation in the DDC (new_hb)
+   input [1:0] ddc_wb_profile,   // wideband filter profile at decimation 1
 
    output [63:0] debug
    );
@@ -472,7 +473,7 @@ endgenerate
       .set_stb(set_stb),.set_addr(set_addr),.set_data(set_data),
       .rx_fe_i({rx_fe[31:16],8'd0}),.rx_fe_q({rx_fe[15:0],8'd0}),
       .sample(sample_rx), .run(run_rx), .strobe(strobe_rx),
-      .droop_en(ddc_droop_en), .debug(debug_ddc_chain) );
+      .droop_en(ddc_droop_en), .wb_profile(ddc_wb_profile), .debug(debug_ddc_chain) );
 
 `ifdef DELETE_FORMAT_CONVERSION
    assign 	     rx_prefc_tdata_r = rx_tdata_i;
