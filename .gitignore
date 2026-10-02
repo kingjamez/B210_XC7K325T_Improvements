@@ -1,0 +1,27 @@
+# Vivado outputs
+fpga/build/
+.Xil/
+*.jou
+*.log
+*.str
+*.dcp
+!vendor/**
+
+# Host builds
+host/**/build/
+
+# macOS
+.DS_Store
+
+# Captures and local measurements
+captures/
+*.sc16
+*.cfile
+tools/pps_probe
+fpga/sim/build/
+tools/gnss_status
+
+# Vivado redirects b200_clk_gen outputs here (stale origin path in the vendor .xci)
+B210_Project_Firmwire.gen/
+clockInfo.txt
+tools/adc_status
