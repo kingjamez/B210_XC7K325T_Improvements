@@ -89,7 +89,8 @@ Options:
 
 ## 5. Tools
 
-Build: `make -C tools` (needs libuhd headers). All are receive-only.
+Build: `make -C tools` (needs libuhd headers). All are receive-only except
+`gpif_stress.py --tx`.
 
 ### `tools/gnss_status`
 
@@ -140,6 +141,48 @@ scale = clipping) and a sticky "CLIPPED" flag. Use it to set RX gain.
 RX throughput benchmark using UHD's `benchmark_rate`
 (`BENCH=/path/to/benchmark_rate` if your UHD package has no examples).
 
+### `tools/gpif_stress.py`
+
+USB interface check for an image (Python UHD bindings):
+
+```bash
+tools/gpif_stress.py --fpga PATH [--opens 20]          # repeated opens, receive only
+tools/gpif_stress.py --fpga PATH --tx                  # also TX / full-duplex streams
+```
+
+Each open runs UHD's full initialization (USB interface and codec reset;
+UHD loads the image only if it differs from the one already loaded). `--tx` **transmits**: zero-valued samples
+(only carrier leakage) at 915 MHz and 0 dB gain by default (`--tx-freq`,
+`--tx-gain`); use a 50 Ω load or make sure that is legal where you are. It
+counts TX sequence errors (packets lost or corrupted on the way to the FPGA),
+underflows, RX overflows and drops; all should be 0.
+
+### `tools/droop_test.py`
+
+Measures the receive passband with droop compensation off and on, receive
+only, on a channel **without an antenna** (default channel 1): the receiver's
+own noise floor is the flat test signal.
+
+```bash
+tools/droop_test.py [--fpga PATH] [--channel 1] [--decims 15,127,6,254,12,1]
+```
+
+Prints, per decimation, the expected droop, how closely the measured on/off
+ratio matches the design model, and the passband ripple off and on.
+
+### Turning droop compensation off
+
+It is on by default. Telemetry CTRL bit 5 turns it off for both channels
+(read-modify-write, the other CTRL bits matter; re-apply after each open):
+
+```python
+import uhd
+u = uhd.usrp.MultiUSRP("type=b200,enable_user_regs")
+regs = u.get_user_settings_iface(0)
+ctrl = regs.peek64(6 * 8) & 0xFFFFFFFF   # readback 6 = CTRL
+regs.poke32(0, ctrl | 0x20)               # off;  ctrl & ~0x20 = on
+```
+
 ## 6. SDR++ and other applications
 
 No changes are needed. With the `uhd.conf` section above, SDR++'s USRP source
@@ -156,3 +199,4 @@ time.
 | `set_clock_source("gpsdo")` throws | That session did not detect the GPS; open again |
 | Dropped samples at high rates | Add `num_recv_frames=128,recv_frame_size=16360` |
 | PPS shows invalid | No GPS fix yet, antenna disconnected, or nothing on the SMA |
+| UHD fails to open: "packet parse error" or an ack timeout while initializing the codec | With this image's USB interface constraints this should not happen; with an image you built yourself, check that the build finished with timing met (it stops otherwise), then run `tools/gpif_stress.py` |

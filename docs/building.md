@@ -13,11 +13,16 @@ cd fpga && make          # non-project Vivado flow, ~25-30 min
 ```
 
 Output: `fpga/build/b210_k7.bin`, plus utilization and timing reports in
-`fpga/build/`. The script refuses to write a bitstream if timing is not met.
+`fpga/build/`. The script refuses to write a bitstream if timing is not met,
+including the USB (FX3) interface, which is constrained to the FX3 datasheet
+(`docs/technical-notes.md`). The interface clock phase is set in `build.tcl`
+(261°); `IFCLK_PHASE=<degrees> make` overrides it for experiments, together
+with the multicycle note in `b210.xdc`.
 Vivado must be on `PATH` (`source <vivado>/settings64.sh`) or pass
 `VIVADO=/path/to/vivado`.
 
-Vivado writes a `B210_Project_Firmwire.gen/` folder and `clockInfo.txt` in the
+Vivado writes a `B210_Project_Firmwire.gen/` folder (the clock IP's generated
+files, cleared at the start of each build) and `clockInfo.txt` in the
 repository root during the build (both are git-ignored).
 
 ## Simulation (run before every build: seconds, not minutes)

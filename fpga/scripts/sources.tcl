@@ -97,5 +97,6 @@ set VERILOG_SOURCES {
   fpga/top/b200/adc_monitor.v
   fpga/top/b200/osc_monitor.v
   fpga/lib/dsp/rnd_clip_slice.v
+  fpga/lib/dsp/droop_comp.v
   fpga/top/b200/b200.v
 }

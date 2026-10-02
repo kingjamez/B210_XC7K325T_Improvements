@@ -137,7 +137,7 @@ module b200 (
     ///////////////////////////////////////////////////////////////////////
     // generate clocks from always on codec main clk
     ///////////////////////////////////////////////////////////////////////
-    wire bus_clk, gpif_clk, radio_clk;
+    wire bus_clk, gpif_clk, radio_clk, ifclk_src;
     wire locked;
     b200_clk_gen gen_clks
     (
@@ -145,7 +145,7 @@ module b200 (
         .clk_in1_n(codec_main_clk_n),
         .CLK_OUT1_40_int(), 
         .CLK_OUT2_100_gpif(gpif_clk), 
-        .CLK_OUT3_100_bus(),
+        .CLK_OUT3_100_bus(ifclk_src),   // gpif_clk, phase-shifted for IFCLK (build.tcl IFCLK_PHASE)
         .reset(reset_global), 
         .locked(locked)
     );
@@ -188,7 +188,7 @@ module b200 (
     ODDR_U
     (
         .Q(IFCLK),   // 1-bit DDR output data
-        .C(gpif_clk), // 1-bit clock input
+        .C(ifclk_src), // IFCLK (FX3 PCLK) leads gpif_clk by 2.75 ns: see b210.xdc "FX3 GPIF"
         .CE(1'b1),      // 1-bit clock enable input
         .D1(1'b1),      // 1-bit data input (associated with C0)
         .D2(1'b0),      // 1-bit data input (associated with C1)

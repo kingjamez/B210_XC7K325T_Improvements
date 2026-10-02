@@ -172,8 +172,28 @@ set_property -dict {PACKAGE_PIN D13 IOSTANDARD LVCMOS33} [get_ports tx_enable1]
 set_property -dict {PACKAGE_PIN J10 IOSTANDARD LVCMOS33} [get_ports tx_enable2]
 
 
-# IFCLK is 100 MHz GPIF clock
-create_clock -period 10.000 -name IFCLK [get_ports IFCLK]
+# FX3 GPIF II synchronous slave FIFO (CYUSB301X datasheet 001-52136, Table 15).
+# IFCLK is the FX3's PCLK, forwarded by ODDR_U from the clock generator's third
+# output, which build.tcl sets to 261 deg (IFCLK_PHASE): PCLK leads gpif_clk by
+# 2.75 ns, centring the worst-case input window (flags: tCFLG; data: hold). All interface registers are in IOBs (gpif2_slave_fifo32.v), so these
+# paths are the same in every build. Without the phase shift and IOBs the FX3's
+# data reached the input registers mid-transition and builds failed at random.
+create_generated_clock -name fx3_pclk -source [get_pins ODDR_U/C] -multiply_by 1 [get_ports IFCLK]
+# FPGA -> FX3: setup 2 ns (tWRS, tRDS, tAS, tPES, tDS), hold 0.5 ns, +-0.2 ns board skew.
+set fx3_out [get_ports {GPIF_D[*] GPIF_CTL1 GPIF_CTL2 GPIF_CTL3 GPIF_CTL7 GPIF_CTL11 GPIF_CTL12}]
+set_output_delay -clock fx3_pclk -max  2.2 $fx3_out
+set_output_delay -clock fx3_pclk -min -0.7 $fx3_out
+# FX3 -> FPGA: data tCO 7 ns max, tCDH 2 ns min; flags tCFLG 8 ns max; plus a
+# 0..1 ns board round trip (PCLK out, data back).
+set_input_delay -clock fx3_pclk -max 8.0 [get_ports {GPIF_D[*]}]
+set_input_delay -clock fx3_pclk -min 2.0 [get_ports {GPIF_D[*]}]
+set_input_delay -clock fx3_pclk -max 9.0 [get_ports {GPIF_CTL4 GPIF_CTL5}]
+set_input_delay -clock fx3_pclk -min 2.0 [get_ports {GPIF_CTL4 GPIF_CTL5}]
+# Data the FX3 launches on a PCLK edge is captured on the gpif_clk edge 12.75 ns
+# later: the cycle alignment the state machine was written for. Hold is then
+# checked against the gpif_clk edge before that (Vivado's default for -setup 2).
+# (Valid for IFCLK_PHASE between 180 and 360 deg; re-check if the phase changes.)
+set_multicycle_path -setup 2 -from [get_clocks fx3_pclk] -to [get_clocks -of_objects [get_pins gen_clks/inst/mmcm_adv_inst/CLKOUT1]]
 create_clock -period 16.276 -name codec_data_clk_p [get_ports codec_data_clk_p]
 
 

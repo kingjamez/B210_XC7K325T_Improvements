@@ -64,7 +64,8 @@ module gpif2_slave_fifo32
     // These are double registered not for meta stability protection, but to make timing closure easier
     // since the first register is locked in the I/O pad.
     //
-    reg fx3_ready, fx3_ready1, fx3_wmark, fx3_wmark1;
+    (* IOB = "TRUE" *) reg fx3_ready, fx3_wmark;
+    reg fx3_ready1, fx3_wmark1;
     always @(posedge gpif_clk) fx3_ready <= gpif_ctl[0];
     always @(posedge gpif_clk) fx3_wmark <= gpif_ctl[1];
     always @(posedge gpif_clk) fx3_ready1 <= fx3_ready;
@@ -73,7 +74,12 @@ module gpif2_slave_fifo32
     //
     // GPIF input and output data lines, tristate
     //
-    reg [31:0] gpif_data_in, gpif_data_out;
+    // All GPIF registers sit in the IOBs so the interface timing is fixed and
+    // the same in every build (constrained in b210.xdc, "FX3 GPIF").
+    (* IOB = "TRUE" *) reg [31:0] gpif_data_in, gpif_data_out;
+    // Output enable, one register per pin so each can sit in its IOB (1 = FX3
+    // drives the bus). It mirrors ~sloe: each sloe assignment below sets it too.
+    (* IOB = "TRUE", DONT_TOUCH = "TRUE" *) reg [31:0] gpif_t = 32'hFFFFFFFF; // = ~sloe at power-up
 
     always @(posedge gpif_clk)
       if (~slrd2)
@@ -81,7 +87,10 @@ module gpif2_slave_fifo32
 	// Hold values until we know if they are end of packets for single beat reads.
     gpif_data_in <= gpif_d;
 
-    assign gpif_d = sloe ? gpif_data_out[31:0] : 32'bz;
+    genvar gi;
+    generate for (gi = 0; gi < 32; gi = gi + 1) begin : gpif_d_tri
+      assign gpif_d[gi] = gpif_t[gi] ? 1'bz : gpif_data_out[gi];
+    end endgenerate
 
    // ////////////////////////////////////////////////////////////////////
    // GPIF bus master state machine
@@ -154,7 +163,7 @@ module gpif2_slave_fifo32
     always @(posedge gpif_clk)
     if(gpif_rst) begin
         state <= STATE_IDLE;
-        sloe <= 1;
+        sloe <= 1; gpif_t <= 32'h0;
         slrd <= 1;
         slwr <= 1;
         pktend <= 1;
@@ -175,7 +184,7 @@ module gpif2_slave_fifo32
       // Increment fifoadr to point at next thread, set all strobes to idle,
       //
         STATE_IDLE: begin
-          sloe <= 1;
+          sloe <= 1; gpif_t <= 32'h0;
           slrd <= 1;
           slwr <= 1;
           pktend <= 1;
@@ -220,11 +229,11 @@ module gpif2_slave_fifo32
             slrd <= 0;
             rx_eop <= 1'b0;
             first_read <= 1'b1; // Set unconditional read flag to kick off transaction
-            sloe <= 0; // FX3 drives the data bus.
+            sloe <= 0; gpif_t <= 32'hFFFFFFFF; // FX3 drives the data bus.
           end else if (fx3_ready1 && ~fx3_wmark1 && read_ready_go) begin
             state <= STATE_READ_SINGLE;
             slrd <= 0;
-            sloe <= 0; // FX3 drives the data bus.
+            sloe <= 0; gpif_t <= 32'hFFFFFFFF; // FX3 drives the data bus.
           end else if (fx3_ready1 && write_ready_go && wr_fifo_eop && (transfer_size[7:0] == 0)) begin // remember that write_ready_go shows 1 cycle old status.
             // If an exact multiple of the native USB packet size (1K USB3, 512B USB2) has been transfered
             // and TLAST is asserted (but the transfer is less than a full FX3 DMA buffer - this is
@@ -275,7 +284,7 @@ module gpif2_slave_fifo32
 		// READY1 flag now reflect effects of last read.
         if (!fx3_ready1) begin
            state <= STATE_IDLE;
-           sloe <= 1'b1;
+           sloe <= 1'b1; gpif_t <= 32'h0;
         end else begin
         // Initiate another READ beat.
            state <= STATE_READ_SINGLE;
@@ -323,7 +332,7 @@ module gpif2_slave_fifo32
         if (!first_read && slrd3) begin // Active low signal
           // Last data of burst will be written to FIFO next clock edge so transition to IDLE also.
           state <= STATE_IDLE;
-          sloe <= 1'b1; // Active low - Resume parking bus with FPGA driving.
+          sloe <= 1'b1; gpif_t <= 32'h0; // Active low - Resume parking bus with FPGA driving.
         end
       end
 

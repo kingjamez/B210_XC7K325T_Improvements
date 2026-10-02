@@ -26,6 +26,7 @@ module ddc_chain
    // To RX control
    output [31:0] sample,
    input 	     run,
+   input 	     droop_en,   // CIC droop compensation (new_hb path)
    output 	     strobe,
    output [31:0]     debug
    );
@@ -244,6 +245,17 @@ module ddc_chain
 	     end
 	   endcase // case (hb_rate)
 
+	 // CIC droop compensation (13-tap FIR at the output rate, coefficients
+	 // selected from the CIC rate / halfband setting; pass-through if
+	 // droop_en = 0 or the CIC is bypassed). See droop_comp.v.
+	 wire [WIDTH-1:0] i_comp, q_comp;
+	 wire             strobe_comp;
+	 droop_comp #(.WIDTH(WIDTH)) droop_comp
+	   (.clk(clk), .rst(rst), .enable(droop_en),
+	    .cic_rate(cic_decim_rate), .hb1_en(enable_hb1), .hb2_en(enable_hb2),
+	    .strobe_in(strobe_unscaled), .i_in(i_unscaled), .q_in(q_unscaled),
+	    .strobe_out(strobe_comp), .i_out(i_comp), .q_out(q_comp));
+
 	 // round to 19 bits for clip (->18) followed by multiplication (total gain of 6 bits)
 	 wire [18:0]  i_unscaled_rnd, q_unscaled_rnd;
 
@@ -251,14 +263,14 @@ module ddc_chain
 	   .bits_in(WIDTH),
 	   .bits_out(19)
 	 ) unscaled_rnd_i (
-	   .in(i_unscaled),
+	   .in(i_comp),
 	   .out(i_unscaled_rnd)
 	 );
 	 round #(
 	   .bits_in(WIDTH),
 	   .bits_out(19)
 	 ) unscaled_rnd_q (
-	   .in(q_unscaled),
+	   .in(q_comp),
 	   .out(q_unscaled_rnd)
 	 );
 
@@ -270,9 +282,9 @@ module ddc_chain
 	 wire [17:0] i_unscaled_clip, q_unscaled_clip;
 
 	 clip_reg #(.bits_in(19), .bits_out(18), .STROBED(1)) unscaled_clip_i
-	   (.clk(clk), .in(i_unscaled_rnd), .strobe_in(strobe_unscaled), .out(i_unscaled_clip[17:0]), .strobe_out(strobe_unscaled_clip));
+	   (.clk(clk), .in(i_unscaled_rnd), .strobe_in(strobe_comp), .out(i_unscaled_clip[17:0]), .strobe_out(strobe_unscaled_clip));
 	 clip_reg #(.bits_in(19), .bits_out(18), .STROBED(1)) unscaled_clip_q
-	   (.clk(clk), .in(q_unscaled_rnd), .strobe_in(strobe_unscaled), .out(q_unscaled_clip[17:0]), .strobe_out());
+	   (.clk(clk), .in(q_unscaled_rnd), .strobe_in(strobe_comp), .out(q_unscaled_clip[17:0]), .strobe_out());
 
 	 // Apply scaling gain to compensate for CORDIC and CIC gain adjustments so that signal swing over network transport has
 	 // optimal dynamic range.

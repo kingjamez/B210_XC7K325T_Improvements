@@ -5,7 +5,8 @@ a Xilinx Kintex-7 XC7K325T + AD9361**. These boards enumerate as an Ettus B210
 and run the Ettus B200 FPGA design ported from Spartan-6, which leaves most of
 the much larger FPGA unused. This image keeps full compatibility with **stock
 UHD** and adds a working GPS, PPS fixes, monitoring, and a cleaner, more
-robust FPGA design.
+robust FPGA design: a USB interface that is timing-constrained to the
+FX3 datasheet instead of working by luck, and a flat receive passband.
 
 Free and open: FPGA code is LGPL-3.0-or-later (Ettus headers intact), host
 tools are GPL-3.0.
@@ -28,6 +29,8 @@ cannot brick a board; unplugging it or loading another image undoes it.
 | ADC overload monitoring | None | Peak level, clip counts and sticky flags per channel |
 | FPGA resources | ~56k LUTs, of which ~28k used as RAM by simulation-model FIFOs | ~31k LUTs; proper block-RAM clock-domain-crossing FIFOs with Vivado-checked constraints; much more timing margin |
 | DDC halfband outputs | Truncate and can wrap on overflow | Rounded and saturating |
+| RX passband (CIC droop) | Rolls off by up to 9.7 dB at 0.4 × the sample rate (odd decimations), 2.3 dB (even) | **Compensated** automatically at every decimation (13-tap FIR, design flatness 0.03 dB); can be turned off |
+| USB interface (FX3 ↔ FPGA) timing | **Not constrained**: each build works or fails at random depending on placement; data sampled mid-transition | Registers in the I/O cells, clock phase centred, constrained to the FX3 datasheet: every build meets worst case or the build stops |
 
 Everything works with stock UHD (no UHD fork, no patched drivers) and stock
 applications such as SDR++ and GNU Radio. The added monitoring is read through
@@ -42,6 +45,15 @@ Linux (UHD 4.9), one board, with the on-board GPS antenna connected:
   runs at 30.72, 40, 56 and 61.44 MS/s (1 channel) and 2 × 15.36 / 2 × 30.72
   MS/s, full 16-bit samples, with `num_recv_frames=128,recv_frame_size=16360`.
   (The vendor image gives the same throughput; this image does not change it.)
+- **TX streaming**: 0 sequence errors, underflows or overflows in 10 s TX and
+  full-duplex runs at 15.36, 30.72 and 61.44 MS/s (1 channel) and 2 × 15.36 /
+  2 × 30.72 MS/s (`tools/gpif_stress.py`, zero-valued samples at minimum gain).
+- **USB reliability**: 20 of 20 UHD opens in a row, each running UHD's full
+  initialization (USB interface and codec reset, register self-tests).
+- **Passband**: at decimation 15 the passband ripple drops from 9.7 dB to
+  0.9 dB (the rest is the analog front end); the compensator's measured
+  effect matches its design model within 0.1–0.2 dB at every decimation
+  tested (`tools/droop_test.py`).
 - **GPS**: detected by stock UHD on every open after the first one following a
   power-up; `gps_time` matches the host clock to the second; after
   `set_time_next_pps`, device time follows GPS with every PPS edge 1 s apart.
@@ -63,10 +75,11 @@ Details: `docs/technical-notes.md`.
   likely identical, but only one has been tested. If a board's GPS is wired
   differently, the GPS auto-configuration does nothing and the board behaves
   like it has no GPS; it never drives a GPS pin it hasn't verified is safe.
-- **Transmit is not yet tested on hardware.** The TX path was rebuilt along
-  with the receive path (new clock-domain-crossing FIFOs) and passes
-  simulation and timing, but no TX test has been run on a board yet. Treat TX
-  as experimental with this release.
+- **Transmit: the data path is tested, RF quality is not.** TX and
+  full-duplex streaming run without lost or corrupted packets up to
+  61.44 MS/s, but only zero-valued samples at minimum gain were sent. Output
+  power, spectrum and EVM have not been measured, and the TX DSP is the stock
+  design (no rounding improvements yet).
 - **The oscillator is not GPS-disciplined.** `clock_source=gpsdo` gives GPS
   *time* but the 40 MHz oscillator free-runs (about −0.7 ppm on the test
   board: ~700 Hz error at 1 GHz). For frequency accuracy, feed a GPSDO's
@@ -89,9 +102,12 @@ Details: `docs/technical-notes.md`.
   are not yet tested.
 - **Building it yourself** needs a Vivado licence that covers the XC7K325T
   (the free Vivado edition does not). See `docs/building.md`.
-- Receive DSP: CIC droop compensation is not included yet (work in progress),
-  so the passband edges at odd decimation rates roll off as with the stock
-  design.
+- Receive DSP: the droop compensator adds a fixed delay of 6 output samples
+  (also when it is turned off, so timing doesn't change when you toggle it).
+  Between 0.4 and 0.5 × the sample rate, outside the flat passband, its gain
+  rises (up to about 4×) to offset the CIC, so signals right at the band edge
+  are attenuated less than with the stock design; the output saturates rather
+  than wraps.
 
 ## Quick start
 
@@ -129,7 +145,7 @@ Full instructions: `docs/user-guide.md`. Register map: `docs/registers.md`.
 | `fpga/scripts/` | Non-project Vivado build (`build.tcl`, `sources.tcl`) |
 | `fpga/sim/` | Icarus Verilog testbenches, full-design elaboration check, Vivado xsim test of the FIFOs |
 | `sw/dsp_models/` | Python reference models used for bit-exact tests |
-| `tools/` | `gnss_status`, `pps_probe`, `adc_status`, `baseline.sh` (stock UHD) |
+| `tools/` | `gnss_status`, `pps_probe`, `adc_status`, `baseline.sh`, `gpif_stress.py`, `droop_test.py` (stock UHD) |
 | `docs/` | User guide, register map, build instructions, technical notes |
 | `release/` | Prebuilt image, checksum and release notes |
 

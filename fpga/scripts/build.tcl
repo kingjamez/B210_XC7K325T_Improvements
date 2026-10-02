@@ -35,10 +35,20 @@ read_verilog -library xil_defaultlib $VERILOG_SOURCES
 
 # Clock generator IP. Copied into build/ so generated outputs stay out of git;
 # synthesized inline (no OOC checkpoint) so the XDC hierarchy gen_clks/inst/... holds.
+# Vivado writes the IP's generated files under the vendor project name in the
+# .xci (B210_Project_Firmwire.gen/, git-ignored). Clear them so a changed
+# IFCLK_PHASE is regenerated rather than locking the IP on stale outputs.
+file delete -force [file join $repo B210_Project_Firmwire.gen]
 file copy [file join $repo fpga ip b200_clk_gen] $ipdir
 read_ip [file join $ipdir b200_clk_gen b200_clk_gen.xci]
 set_property generate_synth_checkpoint false [get_files b200_clk_gen.xci]
 upgrade_ip -quiet [get_ips]
+# Third output = IFCLK source (FX3 PCLK). 261 deg: PCLK leads gpif_clk by 2.75 ns
+# so the FX3's data is mid-window at the FPGA's IOB registers (b210.xdc, "FX3
+# GPIF"). IFCLK_PHASE=<deg> overrides it for experiments.
+set ifclk_phase [expr {[info exists ::env(IFCLK_PHASE)] ? $::env(IFCLK_PHASE) : 261}]
+set_property CONFIG.CLKOUT3_REQUESTED_PHASE $ifclk_phase [get_ips b200_clk_gen]
+puts "IFCLK phase: $ifclk_phase deg"
 generate_target all [get_ips]
 
 # Pre-built halfband decimator netlists (vendor coregen)
@@ -47,7 +57,7 @@ read_edif fpga/top/b200/coregen_dsp/hbdec2.edif
 
 read_xdc fpga/top/b200/b210.xdc
 
-synth_design -top $TOP -part $PART
+synth_design -top $TOP -part $PART -include_dirs [list [file join $repo fpga lib dsp]]
 write_checkpoint -force [file join $build post_synth.dcp]
 report_utilization -file [file join $build utilization_synth.rpt]
 

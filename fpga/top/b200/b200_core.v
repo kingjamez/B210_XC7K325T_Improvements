@@ -370,6 +370,7 @@ module b200_core
      ******************************************************************/
    wire [63:0] radio0_debug;
    wire [31:0] fe0_gpio_out32;
+   wire        droop_dis;           // telemetry CTRL[5]: CIC droop compensation off
    wire        r0_user_set_stb;
    wire [7:0]  r0_user_set_addr, r0_user_rb_addr;
    wire [31:0] r0_user_set_data;
@@ -399,6 +400,7 @@ module b200_core
       .resp_tdata(r0_resp_tdata), .resp_tlast(r0_resp_tlast),  .resp_tvalid(r0_resp_tvalid), .resp_tready(r0_resp_tready),
       .user_set_stb(r0_user_set_stb), .user_set_addr(r0_user_set_addr), .user_set_data(r0_user_set_data),
       .user_rb_addr(r0_user_rb_addr), .user_rb_data(r0_user_rb_data),
+      .ddc_droop_en(~droop_dis),
       .debug(radio0_debug)
    );
 
@@ -418,6 +420,7 @@ module b200_core
       .clkdiv_override(gps_clkdiv_override_r), .bridge_tx(gps_bridge_tx_r),
       .uhd_uart_en(gps_uhd_uart_en_r), .autocfg_status(gps_ac_status),
       .osc_sel_ext(osc_sel_ext), .osc_snap(osc_snap), .osc_last(osc_last),
+      .droop_dis(droop_dis),
       .tx_byte(gps_bridge_tx_byte), .tx_byte_valid(gps_bridge_tx_valid),
       .rx_byte(gps_bridge_rx_byte), .rx_byte_valid(gps_bridge_rx_valid)
    );
@@ -485,6 +488,7 @@ module b200_core
       .resp_tdata(r1_resp_tdata), .resp_tlast(r1_resp_tlast),  .resp_tvalid(r1_resp_tvalid), .resp_tready(r1_resp_tready),
       .user_set_stb(), .user_set_addr(), .user_set_data(),
       .user_rb_addr(), .user_rb_data(64'd0),
+      .ddc_droop_en(~droop_dis),
       .debug(radio1_debug)
    );
 `else

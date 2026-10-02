@@ -113,7 +113,40 @@ during master-clock changes.
 
 Verified against Xilinx's XPM simulation models (random traffic, both clock
 ratios, resets from either domain and with the read clock stopped) and on
-hardware: RX streaming unchanged at every rate. TX not yet tested on hardware.
+hardware: RX streaming unchanged at every rate, and TX / full-duplex streaming
+without lost or corrupted packets up to 61.44 MS/s (`tools/gpif_stress.py`).
+
+## USB interface timing (FX3 GPIF, `gpif2_slave_fifo32.v`, `b210.xdc`)
+
+The FX3 USB controller and the FPGA exchange 32-bit words at 100 MHz (the
+FX3's synchronous slave FIFO interface; the FPGA drives the clock, IFCLK). In
+the vendor port this interface had **no timing constraints**: only a clock
+definition on the IFCLK output that nothing referenced, and none of the
+interface registers in the I/O cells. Every build placed them differently.
+Checked against the CYUSB301X datasheet (clock to data 7 ns, data hold after
+clock 2 ns, flags 8 ns; FX3 input setup 2 ns, hold 0.5 ns) with 0–1 ns of
+board delay, the FX3's data reached the FPGA's input registers in the middle
+of its transition in **every** build: worst-case setup −4 to −6 ns. Builds
+worked because real delays are a few ns faster than worst case. Any unrelated
+change could move the placement and break USB: UHD then failed to open the
+board (control acknowledgement timeouts or "packet parse error" while
+initializing the AD9361).
+
+Fix:
+- all interface registers (32 data in, 32 data out, the FX3 flags) are in the
+  I/O cells, plus a per-pin copy of the output enable, so the paths are fixed;
+- IFCLK comes from a spare output of the clock generator, 261° (2.75 ns ahead
+  of the FPGA's interface clock), which centres the input window;
+- `b210.xdc` describes the interface from the datasheet (generated clock on
+  IFCLK, input/output delays, the two-cycle capture the state machine was
+  written for), so Vivado checks it on every build, and `build.tcl` refuses to
+  write a bitstream that misses it.
+
+Worst-case slack now: FX3 → FPGA setup +0.11 ns, hold +0.10 ns; FPGA → FX3
+setup +1.9 to +2.5 ns, hold +0.8 ns, identical in every build for the inputs.
+On hardware: 20/20 opens; TX and full duplex up to 61.44 MS/s with no sequence
+errors; RX streaming unchanged. The cycle-level protocol is the Ettus one,
+unchanged.
 
 ## Receive DSP: halfband rounding and saturation (`rnd_clip_slice.v`)
 
@@ -126,6 +159,42 @@ overflow there. They are now rounded (round half to even) and saturated,
 combinationally (same latency). Bit-exact against a Python model over ~20,000
 vectors; no change in streaming or DC on hardware. The transmit chain has the
 same pattern and is unchanged in this release.
+
+## Receive DSP: CIC droop compensation (`droop_comp.v`)
+
+The DDC decimates with a 4-stage CIC (rate R) followed by 0–2 halfbands
+(H = 1, 2, 4). The CIC's sinc⁴ response rolls the passband off: at 0.4 × the
+output rate by up to 9.7 dB with no halfband (odd decimations), 2.3 dB with
+one and 0.6 dB with two. A 13-tap symmetric FIR at the output rate, on I and
+Q, after the halfbands, flattens it:
+- coefficients are minimax designs for 0–0.4 × the output rate, including the
+  halfbands' own response (`sw/dsp_models/droop_comp.py`), 18-bit, DC gain
+  exactly 1;
+- the 762 possible (H, R) settings share 18 coefficient sets (CIC rates
+  grouped where they differ by < 0.03 dB); worst design residual 0.029 dB;
+- the set is selected from the CIC rate and halfband settings UHD already
+  programs, so no host change is needed; R = 1 is a pass-through;
+- round half to even and saturating; fixed delay of 6 output samples, also
+  when turned off (telemetry CTRL[5], `docs/registers.md`), so toggling it
+  doesn't move timestamps;
+- bit-exact against the Python model (`fpga/sim/droop_comp_tb.v`).
+
+Measured with `tools/droop_test.py` (the receiver's own noise floor on a
+channel without antenna as a flat source; on/off spectra over |f| ≤ 0.4 ×
+rate):
+
+| Decimation | H | R | Droop at 0.4 × rate | On/off vs model | Ripple off → on |
+|---|---|---|---|---|---|
+| 15 | 1 | 15 | −9.6 dB | 0.09 dB | 9.7 → 0.9 dB |
+| 6 | 2 | 3 | −2.1 dB | 0.12 dB | 2.4 → 0.5 dB |
+| 12 | 4 | 3 | −0.5 dB | 0.09 dB | 1.3 → 0.7 dB |
+| 127 | 1 | 127 | −9.7 dB | 0.21 dB | 12.7 → 3.8 dB |
+| 256 | 4 | 64 | −0.6 dB | 0.13 dB | 6.1 → 5.5 dB |
+
+The on/off ratio (the compensator's own effect) matches the model within the
+measurement's repeatability. What remains of the ripple is the analog front
+end and, at very low rates, the receiver's noise floor, which isn't flat near
+DC.
 
 ## ADC overload monitor (`adc_monitor.v`)
 

@@ -12,7 +12,7 @@ uint64_t v = regs->peek64(N * 8);  // read readback N
 
 The authoritative description is the header comment of each HDL file.
 
-## GNSS / PPS telemetry, `fpga/top/b200/gnss_pps_telemetry.v` (v1.6)
+## GNSS / PPS telemetry, `fpga/top/b200/gnss_pps_telemetry.v` (v1.7)
 
 Tick counts are in radio clock cycles (= the master clock rate) unless noted.
 
@@ -20,7 +20,7 @@ Tick counts are in radio clock cycles (= the master clock rate) unless noted.
 
 | N | Name | Bits |
 |---|---|---|
-| 0 | CTRL | [0] GPS UART RX pin: 0 = B14 (default), 1 = A14 · [1] drive GPS UART TX on the other pin (default 0) · [2] TX from the host bridge instead of UHD's UART · [3] feed the GPS UART to UHD's GPSDO path (set automatically after a successful auto-configuration) · [4] oscillator monitor reference: 0 = GPS PPS, 1 = SMA PPS · [31:16] UART bit time in 100 MHz cycles (default 2604 = 38400 baud; 0 = UHD's value) |
+| 0 | CTRL | [0] GPS UART RX pin: 0 = B14 (default), 1 = A14 · [1] drive GPS UART TX on the other pin (default 0) · [2] TX from the host bridge instead of UHD's UART · [3] feed the GPS UART to UHD's GPSDO path (set automatically after a successful auto-configuration) · [4] oscillator monitor reference: 0 = GPS PPS, 1 = SMA PPS · [5] CIC droop compensation off, both RX channels (default 0 = on; v1.7+) · [31:16] UART bit time in 100 MHz cycles (default 2604 = 38400 baud; 0 = UHD's value) |
 | 1 | CLEAR | Any write clears counters and the RX ring |
 | 2 | TXBYTE | [7:0] byte to send through the host UART bridge |
 
